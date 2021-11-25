@@ -43,5 +43,6 @@ void select(std::string tableName, std::vector<std::string> colNames);
 /*Errors*/
 std::string errors[4] = {"No Error", "Missing right parenthesis!", "Missing left parenthesis!", "No such SQL Command!"};
 
+std::string toLower(std::string);
 #include "structs.cpp"
 #endif
