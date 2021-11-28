@@ -21,7 +21,11 @@ void Tokenizer::start(){
         return;
     }
 
-    parser.parse();
+    if(parser.parse()){
+        //Perform Error handling
+    }
+
+    sqlCommands.clear();
 }
 
 int Tokenizer::errorCheck(){
@@ -48,9 +52,11 @@ int Tokenizer::errorCheck(){
     return 0;
 }
 
-void Parser::parse(){
+int Parser::parse(){
     for(int i=0; i<sqlCommands.size(); i++){
         sqlQuery = sqlCommands[i];
+
+        // Include Preprocessing of '()' to space
 
         vector<string> temp;
         stringstream ss(sqlQuery);
@@ -59,7 +65,16 @@ void Parser::parse(){
             temp.push_back(word);
         }
 
-        if(toLower(temp[0]) == "create" && toLower(temp[1]) == "table"){
+        if(toLower(temp[0]) == "describe")
+        {
+            if(temp[1].empty()){
+                cout << "Error: " << errors[7] << " \"" << sqlQuery << "\"" << endl;
+                return 1;
+            }
+            describeTable(temp[1]);
+        }
+        else if(toLower(temp[0]) == "create" && toLower(temp[1]) == "table")
+        {
             vector<string> colNames, colTypes;
 
             for(int i=3; i<temp.size(); i++){
@@ -74,13 +89,85 @@ void Parser::parse(){
                 }
             }
 
-            createDB(temp[2], colNames, colTypes);
+            if(colNames.size() != colTypes.size()){
+                cout << "Error: " << errors[4] << " \"" << sqlQuery << "\"" << endl;
+            }
+            else
+                createDB(temp[2], colNames, colTypes);
+
         }
-        else if(toLower(temp[0]) == "drop"){
-            cout << "drop" << endl;
+        else if(toLower(temp[0]) == "drop" && toLower(temp[1]) == "table")
+        {
+            dropDB(temp[2]);
         }
-        else
-            cout << "Error: " << errors[3] << " \"" << temp[0] << " " << temp[1] << "\"" << endl;
+        else if(toLower(temp[0]) == "insert" && toLower(temp[1]) == "into")
+        {
+            if(temp[3] != "values"){
+                cout << "Error: " << errors[4] << " \"" << sqlQuery << "\" " << endl;
+                return 1;
+            }
+            else
+            {
+                string values;
+                for(int i=4; i<temp.size(); i++)
+                    values += temp[i] + " ";
+                insert(temp[2], values);
+            }
+        }
+        else{
+            cout << "Error: " << errors[3] << " \"" << sqlQuery << "\" " << endl;
+            return 1;               //ISSUE Error.... Include Flag triggering
+        }
+    }
+
+    return 0;
+}
+
+void describeTable(std::string tableName){
+    string line;
+    file.open("schema.txt");
+
+    bool found = false;
+    
+    while (getline(file, line))
+    {
+        if (line.substr(0, line.find("#")) == tableName)
+        {
+            found = true;
+            break;
+        }
+    }
+    //TableName#ATTR1#TYPE1#ATTR2#TYPE2
+
+    file.close();
+
+    if(!found)
+    {
+        cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
+    }
+    else
+    {
+        int i = -1;
+        stringstream ss(line);
+    
+        while (ss.good()) {
+            string substr;
+            getline(ss, substr, '#');
+            
+            if(i == -1){
+                i = 0;
+                continue;
+            }
+            else if(i == 0){
+                cout << substr << " -- ";
+                i++;
+            }
+            else{
+                cout << substr << endl;
+                i--;
+            }
+        }
+        cout << endl;
     }
 }
 
@@ -96,6 +183,154 @@ void createDB(std::string tableName, std::vector<std::string> colNames, std::vec
     file << endl;
     csvFile << endl;
 
+    //THROW SUCCESS MESSAGE
+    cout << "Database Created." << endl;
+
     file.close();
     csvFile.close();
+}
+
+void dropDB(std::string tableName){
+    ifstream FILE("schema.txt");
+
+    if(!FILE)
+    {
+        cout << "Error: " << errors[6] << endl;
+    }
+    else
+    {
+        FILE.close();
+        
+        deleteTableMetadata(tableName);                 //Take result value for error checking
+        remove((tableName + ".csv").c_str());           //Put error handling
+        
+        //THROW SUCCESS MESSAGE
+        cout << "Table dropped successfully." << endl;
+    }
+}
+
+void deleteTableMetadata(std::string tableName){        //make return type int
+    string line;
+    ofstream temp("temp.txt");
+    file.open("schema.txt");
+
+    bool found = false;                     //Check if table name exists in the schema.txt file
+
+    while (getline(file, line))
+    {
+        if (line.substr(0, line.find("#")) != tableName)
+            temp << line << endl;
+        else
+            found = true;
+    }
+
+    temp.close();
+    file.close();
+
+    if(!found)
+    {
+        cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
+        remove("text.txt");             //return
+    }
+    else
+    {
+        remove("schema.txt");                           //INCLUDE ERROR HANDLING
+        rename("temp.txt", "schema.txt");
+    }
+}
+
+void insert(std::string tableName, std::string query){
+    std::vector<std::string> colTypes;
+    std::string line;
+    file.open("schema.txt");
+
+    bool found = false;
+
+    while (getline(file, line))
+    {
+        if (line.substr(0, line.find("#")) == tableName)
+        {
+            found = true;
+            break;
+        }
+    }
+    //TableName#ATTR1#TYPE1#ATTR2#TYPE2
+
+    file.close();
+
+    if(!found)
+    {
+        cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
+    }
+    else
+    {
+        vector<string> v;
+        stringstream ss(line);
+    
+        while (ss.good()) {
+            string substr;
+            getline(ss, substr, '#');
+            v.push_back(substr);
+        }
+
+        for(int i=2; i<v.size(); i+=2)
+            colTypes.push_back(v[i]);
+    }
+
+    //coltypes = int char int
+    //query = (123 'ABC' 32)
+
+    file.open(tableName+".csv", ios::app);
+
+    vector<string> values;
+    query.erase(0,1);
+    query.erase(query.size()-1, 1);
+
+    stringstream ss(query);
+    while (ss.good()) {
+        string substr;
+        getline(ss, substr, ',');
+        values.push_back(substr);
+    }
+
+    if(values.size() != colTypes.size()){
+        cout << "Error: " << errors[8] << " \"" << query << "\"" << endl;
+    }
+    else{
+        string buffer;
+
+        for(int i=0; i<values.size(); i++){
+            if(toLower(colTypes[i]) == "int"){
+                if(checkIsDigit(values[i]))
+                {
+                    buffer += values[i] + ",";
+                }
+                else{
+                    cout << "Error: " << errors[9] << " \"" << values[i] << "\"" << endl;
+                    return;
+                }
+            }
+            if(toLower(colTypes[i]) == "char"){
+                if(!checkIsDigit(values[i])){
+                    values[i].erase(0,1);
+                    values[i].erase(values[i].size()-1,1);
+                    buffer += values[i] + ",";
+                }
+                else{
+                    cout << "Error: " << errors[9] << " \"" << values[i] << "\"" << endl;
+                    return;
+                }
+            }
+        }
+
+        file << buffer << endl;
+        cout << "Tuple inserted successfully." << endl;
+    }
+}
+
+bool checkIsDigit(string s){
+    for(int i=0; i<s.size(); i++){
+        if(!isdigit(s[i])) return false;
+    }
+    return true;
 }

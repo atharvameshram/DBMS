@@ -25,24 +25,30 @@ private:
     std::string sqlQuery;
 
 public:
-    void parse();
+    int parse();                        //MANAGE ERROR HANDLING
 };
 
 /*DDL*/
 void createDB(std::string tableName, std::vector<std::string> colNames, std::vector<std::string> colTypes);
 void dropDB(std::string tableName);
+void deleteTableMetadata(std::string tableName);
 
 /*DML*/
-void insert(std::string tableName, std::vector<std::string> colNames, std::vector<std::string> rowValues);
+void insert(std::string tableName, std::string query);
 void update(std::string tableName, std::vector<std::string> colNames, std::vector<std::string> rowValues);
 void deleteRow(std::string tableName, std::vector<std::string> colNames, std::string key);
 
 /*Query*/
 void select(std::string tableName, std::vector<std::string> colNames);
+void describeTable(std::string tableName);
 
 /*Errors*/
-std::string errors[4] = {"No Error", "Missing right parenthesis!", "Missing left parenthesis!", "No such SQL Command!"};
+std::string errors[10] = {"No Error", "Missing right parenthesis!", "Missing left parenthesis!", "No such SQL Command!",
+                        "Error in given SQL Command! Please rectify!", "No such table found!", "No schema available!",
+                        "Please specify table name", "Too few arguments passed in the insert statement.", "Invalid argument for defined attribute type"};
 
 std::string toLower(std::string);
+bool checkIsDigit(std::string s);
+
 #include "structs.cpp"
 #endif
