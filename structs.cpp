@@ -2,7 +2,7 @@
 using namespace std;
 
 Tokenizer tokenizer;                    //Global Tokenizer for input handling
-Parser parser;
+Parser parser;                          //Global Parser object to parse query
 
 string toLower(string s){
     transform(s.begin(), s.end(), s.begin(), ::tolower);
@@ -17,7 +17,7 @@ void Tokenizer::start(){
     int result = errorCheck();
 
     if(result){
-        std::cout << "Error: " << errors[result] << std::endl; //////////////
+        std::cout << "Error: " << errors[result] << std::endl;          ////
         return;
     }
 
@@ -65,15 +65,7 @@ int Parser::parse(){
             temp.push_back(word);
         }
 
-        if(toLower(temp[0]) == "describe")
-        {
-            if(temp[1].empty()){
-                cout << "Error: " << errors[7] << " \"" << sqlQuery << "\"" << endl;
-                return 1;
-            }
-            describeTable(temp[1]);
-        }
-        else if(toLower(temp[0]) == "create" && toLower(temp[1]) == "table")
+        if(toLower(temp[0]) == "create" && toLower(temp[1]) == "table")
         {
             vector<string> colNames, colTypes;
 
@@ -96,9 +88,50 @@ int Parser::parse(){
                 createDB(temp[2], colNames, colTypes);
 
         }
+        else if(toLower(temp[0]) == "describe")
+        {
+            if(temp[1].empty()){
+                cout << "Error: " << errors[7] << " \"" << sqlQuery << "\"" << endl;
+                return 1;
+            }
+            describeTable(temp[1]);
+        }
         else if(toLower(temp[0]) == "drop" && toLower(temp[1]) == "table")
         {
             dropDB(temp[2]);
+        }
+        else if (toLower(temp[0]) == "help")
+        {
+            if(toLower(temp[1]) == "tables"){
+                file.open("schema.txt");
+                string line;
+                bool empty = true;
+
+                if(!file){
+                    cout << "Error: " << errors[6] << endl;
+                }
+                else
+                {
+                    while(getline(file, line)){
+                        cout << line.substr(0, line.find("#")) << endl;
+                        empty = false;
+                    }
+
+                    if(empty) cout << "No tables found." << endl;
+                }
+                file.close();
+            }
+            else
+            {
+                if(toLower(temp[1]) == "create" && toLower(temp[2]) == "table")
+                {
+                    cout << "\"CREATE TABLE\" command is part of DDL commands, with which user can create databases by providing Table Name, its attributes, their respective attribute types and \noptional attribute constraints.\nExpected Format: \"CREATE TABLE tablename (attr1 attr1_type attr1_constr, attr2 attr2_type attr2_constr, .....)\"" << endl;
+                }
+                else{
+                    cout << "Error: " << errors[4] << " \"" << sqlQuery << "\"" << endl;
+                    return 1;
+                }
+            }
         }
         else if(toLower(temp[0]) == "insert" && toLower(temp[1]) == "into")
         {
@@ -191,16 +224,14 @@ void createDB(std::string tableName, std::vector<std::string> colNames, std::vec
 }
 
 void dropDB(std::string tableName){
-    ifstream FILE("schema.txt");
+    file.open("schema.txt");
 
-    if(!FILE)
+    if(!file)
     {
         cout << "Error: " << errors[6] << endl;
     }
     else
     {
-        FILE.close();
-        
         deleteTableMetadata(tableName);                 //Take result value for error checking
         remove((tableName + ".csv").c_str());           //Put error handling
         
@@ -212,7 +243,6 @@ void dropDB(std::string tableName){
 void deleteTableMetadata(std::string tableName){        //make return type int
     string line;
     ofstream temp("temp.txt");
-    file.open("schema.txt");
 
     bool found = false;                     //Check if table name exists in the schema.txt file
 
@@ -230,7 +260,7 @@ void deleteTableMetadata(std::string tableName){        //make return type int
     if(!found)
     {
         cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
-        remove("text.txt");             //return
+        remove("text.txt");                                                     //return
     }
     else
     {
@@ -261,6 +291,7 @@ void insert(std::string tableName, std::string query){
     if(!found)
     {
         cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
+        return;                                                                 //Add error handling
     }
     else
     {
