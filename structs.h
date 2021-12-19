@@ -35,8 +35,8 @@ void deleteTableMetadata(std::string tableName);
 
 /*DML*/
 void insert(std::string tableName, std::string query);
-void update(std::string tableName, std::vector<std::string> colNames, std::vector<std::string> rowValues);
-void deleteRow(std::string tableName, std::vector<std::string> colNames, std::string key);
+void update(std::string tableName, std::string update_list, std::string condition_list);
+void deleteRow(std::string tableName, std::string colName, std::string key);
 
 /*Query*/
 void select(std::string tableName, std::vector<std::string> colNames);
