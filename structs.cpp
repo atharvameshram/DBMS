@@ -9,6 +9,17 @@ string toLower(string s){
     return s;
 }
 
+void breakString(std::vector<std::string>& values, std::string line, char delim){
+    stringstream ss(line);
+
+    while (ss.good()) {
+        string substr;
+        getline(ss, substr, delim);
+        substr = rtrim(ltrim(substr));
+        values.push_back(substr);
+    }
+}
+
 bool checkIsDigit(string s){
     for(int i=0; i<s.size(); i++){
         if(!isdigit(s[i])) return false;
@@ -16,10 +27,71 @@ bool checkIsDigit(string s){
     return true;
 }
 
-std::string rtrim(const std::string &s)
-{
+bool tableCheck(std::string tableName, std::string& line){
+    file.open("schema.txt");
+    
+    bool found = false;
+
+    while (getline(file, line))
+    {
+        if (line.substr(0, line.find("#")) == tableName)
+        {
+            found = true;
+            break;
+        }
+    }
+    file.close();
+
+    return found;
+}
+
+bool dataTypeChecker(string colType, string& key){
+    if(toLower(colType) == "int"){
+        if(!checkIsDigit(key)){            
+            return false;
+        }
+    }
+    else if(toLower(colType) == "char"){
+        if(!checkIsDigit(key)){
+            key.erase(0,1);
+            key.erase(key.size()-1,1);
+        }
+        else{
+            return false;
+        }
+    }
+
+    return true;
+}
+
+void removeParenthesis(std::string& s){
+    int found = s.find('(');
+    if(found != string::npos){
+        s.erase(s.begin() + found);
+    }
+    
+    found = s.rfind(')');
+    if(found != string::npos){
+        s.erase(s.begin() + found);
+    }
+}
+
+std::string ltrim(const std::string &s){
+    size_t start = s.find_first_not_of(" \n\r\t\f\v");
+    return (start == std::string::npos) ? "" : s.substr(start);
+}
+
+std::string rtrim(const std::string &s){
     size_t end = s.find_last_not_of(" \n\r\t\f\v");
     return (end == std::string::npos) ? "" : s.substr(0, end + 1);
+}
+
+int finder(vector<string>& updateColNames, string og_colName, int start = 0){
+    for(int i=start; i<updateColNames.size(); i++){
+        if(updateColNames[i] == og_colName){ return i; }
+    }
+
+    return -1;
 }
 
 void Tokenizer::setString(std::string input){
@@ -80,25 +152,73 @@ int Parser::parse(){
 
         if(temp.size() > 1 && toLower(temp[0]) == "create" && toLower(temp[1]) == "table")
         {
-            vector<string> colNames, colTypes;
+            vector<string> colNames, colTypes, constraints, primaryKeys, fkCols, fkRefTbl, fkRTCols;
+            bool breakFlag = false;
 
-            for(int i=3; i<temp.size(); i++){
-                if(i==3){
-                    colNames.push_back(temp[i].substr(1));
-                }
-                else if(i == temp.size() - 1 || i % 2 == 0){
-                    colTypes.push_back(temp[i].substr(0, temp[i].size()-1));
-                }
-                else{
-                    colNames.push_back(temp[i]);
+            int pKeyLoc = finder(temp, "primary");
+            int fKeyLoc = finder(temp, "foreign");
+
+            if(pKeyLoc == -1){
+                for(int i=3; i<temp.size(); i++){
+                    if(i==3){
+                        colNames.push_back(temp[i].substr(1));
+                    }
+                    else if(i == temp.size() - 1 || i % 2 == 0){
+                        std::string colType = temp[i].substr(0, temp[i].size()-1);
+                        if(!(colType == "int" || colType == "char")){
+                            cout << "Error: " << errors[4] << endl;
+                            breakFlag = true;
+                            break;
+                        }
+                        colTypes.push_back(colType);
+                    }
+                    else{
+                        colNames.push_back(temp[i]);
+                    }
                 }
             }
+            else{
+                for(int i=3; i<pKeyLoc; i++){
+                    if(i==3){
+                        colNames.push_back(temp[i].substr(1));
+                    }
+                    else if(i == pKeyLoc - 1 || i % 2 == 0){
+                        std::string colType = temp[i].substr(0, temp[i].size()-1);
+                        if(!(colType == "int" || colType == "char")){
+                            cout << "Error: " << errors[4] << endl;
+                            breakFlag = true;
+                            break;
+                        }
+                        colTypes.push_back(colType);
+                    }
+                    else{
+                        colNames.push_back(temp[i]);
+                    }
+                }
+
+                for(int i=pKeyLoc+2; i< (fKeyLoc == -1 ? temp.size() : fKeyLoc); i++){
+                    removeParenthesis(temp[i]);
+                    primaryKeys.push_back(temp[i]);
+                }
+
+                while(fKeyLoc != -1){
+                    removeParenthesis(temp[fKeyLoc+2]);
+                    fkCols.push_back(temp[fKeyLoc+2]);
+                    removeParenthesis(temp[fKeyLoc+4]);
+                    fkRefTbl.push_back(temp[fKeyLoc+4]);
+                    removeParenthesis(temp[fKeyLoc+5]);
+                    fkRTCols.push_back(temp[fKeyLoc+5]);
+                    fKeyLoc = finder(temp, "foreign", fKeyLoc+5);
+                }
+            }
+
+            if(breakFlag) continue;
 
             if(colNames.size() != colTypes.size()){
                 cout << "Error: " << errors[4] << " \"" << sqlQuery << "\"" << endl;
             }
             else
-                createDB(temp[2], colNames, colTypes);
+                createDB(temp[2], colNames, colTypes, constraints, primaryKeys, fkCols, fkRefTbl, fkRTCols);
 
         }
         else if(temp.size() > 1 && toLower(temp[0]) == "describe")
@@ -189,6 +309,7 @@ int Parser::parse(){
                 std::string values;
                 for(int i=4; i<temp.size(); i++)
                     values += temp[i] + " ";
+                
                 insert(temp[2], values);
             }
         }
@@ -221,6 +342,39 @@ int Parser::parse(){
 
             update(temp[1], update_list, condition_list);   //TableName, 'col = value, col2 = val2....', 'id = 1.....'
         }
+        else if(temp.size() > 3 && toLower(temp[0]) == "select")
+        {
+            int idx;
+            if((idx = finder(temp, "from")) == -1){
+                cout << "Error: " << errors[10] << " \"" << sqlQuery << "\" " << endl;
+                return 1;    
+            }
+            
+            string tableName = temp[idx+1];
+            //////Error handling for table name (bad access probably)
+            
+            string attr_list;
+            string condn_list;
+
+            if(temp[1] != "*"){
+                for(int i=1; i<idx; i++)
+                    attr_list += temp[i] + " ";
+            }
+            else{
+                if(idx != 2){
+                    cout << "Error: " << errors[4] << " \"" << sqlQuery << "\" " << endl;
+                    return 1;
+                }
+                attr_list = temp[1];
+            }
+
+            if((idx = finder(temp, "where")) != -1){
+                for(int i=idx+1; i<temp.size(); i++)
+                    condn_list += temp[i] + " ";
+            }
+
+            select(tableName, attr_list, condn_list);
+        }
         else{
             cout << "Error: " << errors[3] << " \"" << sqlQuery << "\" " << endl;
             return 1;               //ISSUE Error.... Include Flag triggering
@@ -233,25 +387,10 @@ int Parser::parse(){
 
 void describeTable(std::string tableName){
     string line;
-    file.open("schema.txt");
-
-    bool found = false;
     
-    while (getline(file, line))
-    {
-        if (line.substr(0, line.find("#")) == tableName)
-        {
-            found = true;
-            break;
-        }
-    }
-    //TableName#ATTR1#TYPE1#ATTR2#TYPE2
-
-    file.close();
-
-    if(!found)
-    {
+    if(!tableCheck(tableName, line)){
         cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
+        return;
     }
     else
     {
@@ -279,42 +418,35 @@ void describeTable(std::string tableName){
     }
 }
 
-void createDB(std::string tableName, std::vector<std::string> colNames, std::vector<std::string> colTypes){
-    file.open("schema.txt", ios::app);    
+void createDB(std::string tableName, std::vector<std::string> colNames, std::vector<std::string> colTypes, std::vector<std::string> constraints, std::vector<std::string> primaryKeys, std::vector<std::string> fkCols, std::vector<std::string> fkRefTable, std::vector<std::string> fkRTCols){
     std::string line;
 
-    bool found = false;
-
-    while (getline(file, line))
-    {
-        if (line.substr(0, line.find("#")) == tableName)
-        {
-            found = true;
-            break;
-        }
-    }
-    //TableName#ATTR1#TYPE1#ATTR2#TYPE2
-
-    file.close();
-
-    if(found)
+    if(tableCheck(tableName, line))
     {
         cout << "Error: Table name already exists!" << endl;
         return;                                                                 //Add error handling
     }
 
+    file.open("schema.txt", ios::app);  
     ofstream csvFile(tableName + ".csv");
 
     file << tableName << "#";
+
+    // int idx = -1, j = 0, k = 0;
+    // for(int i=0; i<colNames.size(); i++){
+       
+    // }
+
     for(int i=0; i<colNames.size(); i++){
         file << colNames[i] << "#" << colTypes[i] << ((i == colNames.size() - 1) ? "" : "#");           //Handle Char(12) len and stuff
         csvFile << colNames[i] << ((i == colNames.size() - 1) ? "" : ",");
     }
+
     file << endl;
     csvFile << endl;
 
     //THROW SUCCESS MESSAGE
-    cout << "Database Created." << endl;
+    cout << "Table Created." << endl;
 
     file.close();
     csvFile.close();
@@ -329,7 +461,10 @@ void dropDB(std::string tableName){
     }
     else
     {
-        deleteTableMetadata(tableName);                 //Take result value for error checking
+        if(!deleteTableMetadata(tableName)){            //Take result value for error checking
+            return;
+        }              
+        
         remove((tableName + ".csv").c_str());           //Put error handling
         
         //THROW SUCCESS MESSAGE
@@ -337,7 +472,7 @@ void dropDB(std::string tableName){
     }
 }
 
-void deleteTableMetadata(std::string tableName){        //make return type int
+bool deleteTableMetadata(std::string tableName){        //make return type int
     string line;
     ofstream temp("temp.txt");
 
@@ -357,83 +492,84 @@ void deleteTableMetadata(std::string tableName){        //make return type int
     if(!found)
     {
         cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
-        remove("text.txt");                                                     //return
+        if(remove("text.txt") != 0)             //return
+            cout << strerror(errno) << endl;
+        return false;
     }
     else
     {
         remove("schema.txt");                           //INCLUDE ERROR HANDLING
         rename("temp.txt", "schema.txt");
+        return true;
     }
 }
 
 void insert(std::string tableName, std::string query){
     std::vector<std::string> colTypes;
     std::string line;
-    file.open("schema.txt");
 
-    bool found = false;
-
-    while (getline(file, line))
-    {
-        if (line.substr(0, line.find("#")) == tableName)
-        {
-            found = true;
-            break;
-        }
-    }
-    //TableName#ATTR1#TYPE1#ATTR2#TYPE2
-
-    file.close();
-
-    if(!found)
+    if(!tableCheck(tableName, line))
     {
         cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
         return;                                                                 //Add error handling
     }
-    else
-    {
-        vector<string> v;
-        stringstream ss(line);
-    
-        while (ss.good()) {
-            string substr;
-            getline(ss, substr, '#');
-            v.push_back(substr);
-        }
 
-        for(int i=2; i<v.size(); i+=2)
-            colTypes.push_back(v[i]);
+    vector<string> v;
+    
+    /*stringstream ss(line);
+
+    while (ss.good()) {
+        string substr;
+        getline(ss, substr, '#');
+        v.push_back(substr);
     }
+    */
+
+    breakString(v, line, '#');
+
+    for(int i=2; i<v.size(); i+=2)
+        colTypes.push_back(v[i]);
+
 
     //coltypes = int char int
     //query = (123, 'ABC', 32)
 
     file.open(tableName+".csv", ios::app);
 
-    vector<string> values;
-    query.erase(0,1);
-    query.erase(query.size()-1, 1);
+    /*
+    if(!file){
+        return;
+    }
+    */
 
-    stringstream ss(query);
+    vector<string> values;
+
+    rtrim(ltrim(query));
+    removeParenthesis(query);
+
+    /*ss.clear();
+    ss.str(query);
     while (ss.good()) {
         string substr;
         getline(ss, substr, ',');
+        substr = rtrim(ltrim(substr));
         values.push_back(substr);       // 123 'ABC' 32
     }
+    */
+
+    breakString(values, query, ',');
 
     if(values.size() != colTypes.size()){
         cout << "Error: " << errors[8] << " \"" << query << "\"" << endl;
+        file.close();
+        return;
     }
     else{
         string buffer;
 
         for(int i=0; i<values.size(); i++){
-            if(toLower(colTypes[i]) == "int"){
-                if(checkIsDigit(values[i]))
-                {
-                    buffer += values[i] + ",";
-                }
-                else{
+            /*if(toLower(colTypes[i]) == "int"){
+                if(!checkIsDigit(values[i])){            
                     cout << "Error: " << errors[9] << " \"" << values[i] << "\"" << endl;
                     return;
                 }
@@ -442,18 +578,24 @@ void insert(std::string tableName, std::string query){
                 if(!checkIsDigit(values[i])){
                     values[i].erase(0,1);
                     values[i].erase(values[i].size()-1,1);
-                    buffer += values[i] + ",";
                 }
                 else{
                     cout << "Error: " << errors[9] << " \"" << values[i] << "\"" << endl;
                     return;
                 }
+            }*/
+            if(!dataTypeChecker(colTypes[i], values[i])){
+                cout << "Error: " << errors[9] << " \"" << values[i] << "\"" << endl;
+                file.close();
+                return;
             }
+            buffer += values[i] + (i == values.size()-1 ? "" : ",");
         }
 
         file << buffer << endl;     //123,ABC,32
         cout << "Tuple inserted successfully." << endl;
     }
+    file.close();
 }
 
 void deleteRow(std::string tableName, std::string colName, std::string key){
@@ -463,45 +605,62 @@ void deleteRow(std::string tableName, std::string colName, std::string key){
     }
 
     std::string line;
-    file.open("schema.txt");
 
-    bool found = false;
-
-    while (getline(file, line))
-    {
-        if (line.substr(0, line.find("#")) == tableName)
-        {
-            found = true;
-            break;
-        }
-    }
-
-    file.close();
-
-    if(!found)
-    {
+    if(!tableCheck(tableName, line)){
         cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
-        return;                                                                 //Add error handling
+        return;                                                                 //Add error handling    
     }
-    else if(line.find(colName) == string::npos){
+    
+    int loc;
+    if((loc = line.find(colName)) == string::npos){
         cout << "Error: No such column name exists in table!" << endl;
         return;
     }
+    else{
+        loc = line.find("#", loc);
+        string colType = line.substr(loc+1, line.find('#', loc+1)-loc-1);       //where id = abc
+
+        /*if(toLower(colType) == "int"){
+            if(!checkIsDigit(key)){            
+                cout << "Error: " << errors[9] << " " << colType << " for column \"" << colName << "\"" << endl;
+                return;
+            }
+        }
+        if(toLower(colType) == "char"){
+            if(!checkIsDigit(key)){
+                key.erase(0,1);
+                key.erase(key.size()-1,1);
+            }
+            else{
+                cout << "Error: " << errors[9] << " " << colType << " for column \"" << colName << "\"" << endl;
+                return;
+            }
+        }*/
+
+        if(!dataTypeChecker(colType, key)){
+            cout << "Error: " << errors[9] << " " << colType << " for column \"" << colName << "\"" << endl;
+            return;
+        }
+    }
 
     file.open(tableName+".csv");
+    ofstream temp("temp.csv");
 
     vector<string> values;          // Name Mob I
 
-    ofstream temp("temp.csv");
-
     getline(file, line); 
     temp << line << endl;
-    stringstream ss(line);
+    
+    /*stringstream ss(line);
     while (ss.good()) {
         string substr;
         getline(ss, substr, ',');
+        substr = rtrim(ltrim(substr));
         values.push_back(substr);
     }
+    */
+
+    breakString(values, line, ',');
 
     int i = 0;
     int counter = 0;
@@ -510,13 +669,17 @@ void deleteRow(std::string tableName, std::string colName, std::string key){
     while (getline(file, line))
     {
         values.clear();
-        ss.clear();
+        
+        /*ss.clear();
         ss.str(line);
         while (ss.good()) {
             string substr;
             getline(ss, substr, ',');
+            substr = rtrim(ltrim(substr));
             values.push_back(substr);
         }
+        */
+        breakString(values, line, ',');
 
         if (values[i] != key)
             temp << line << endl;
@@ -535,36 +698,26 @@ void deleteRow(std::string tableName, std::string colName, std::string key){
 void update(std::string tableName, std::string update_list, std::string condition_list){
     // Function Table check can be added
     std::string line;
-    file.open("schema.txt");
 
-    bool found = false;
-
-    while (getline(file, line))
-    {
-        if (line.substr(0, line.find("#")) == tableName)
-        {
-            found = true;
-            break;
-        }
-    }
-
-    file.close();
-
-    if(!found)
-    {
+    if(!tableCheck(tableName, line)){
         cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
-        return;                                                                 //Add error handling
+        return;                                                                 //Add error handling    
     }
     
     //col = val, col2 = val2
     vector<string> update_KV_pair;
-    stringstream ss(update_list);
+    
+    /*stringstream ss(update_list);
     while (ss.good()) {
         string substr;
         getline(ss, substr, ',');
+        substr = rtrim(ltrim(substr));
         update_KV_pair.push_back(substr);
     }
+    */
+    breakString(update_KV_pair, update_list, ',');
 
+    stringstream ss;
     vector<string> update_colNames;
     vector<string> update_values;
     for(int i=0; i<update_KV_pair.size(); i++){
@@ -574,7 +727,7 @@ void update(std::string tableName, std::string update_list, std::string conditio
         for(int i=0; i<2; i++){
             string substr;
             getline(ss, substr, '=');
-            substr = rtrim(substr);
+            substr = rtrim(ltrim(substr));
             if(i == 0) update_colNames.push_back(substr);
             else update_values.push_back(substr);
         }
@@ -599,7 +752,7 @@ void update(std::string tableName, std::string update_list, std::string conditio
     for(int i=0; i<2; i++){
         string substr;
         getline(ss, substr, '=');
-        substr = rtrim(substr);
+        substr = rtrim(ltrim(substr));
         if(i == 0) condn_colName = substr;
         else condn_value = substr;
     }
@@ -611,23 +764,23 @@ void update(std::string tableName, std::string update_list, std::string conditio
 
 
     file.open(tableName+".csv");
-
     vector<string> row_values;          // Name Mob I
-    vector<string> og_colNames;
     ofstream temp("temp.csv");
-
 
     getline(file, line); 
     temp << line << endl;
-    ss.clear();
+    
+    /*ss.clear();
     ss.str(line);
     while (ss.good()) {
         string substr;
         getline(ss, substr, ',');
-        substr = rtrim(substr);
+        substr = rtrim(ltrim(substr));
         row_values.push_back(substr);
-        og_colNames.push_back(substr);
-    }
+    }*/
+    breakString(row_values, line, ',');
+
+    vector<string> og_colNames(row_values);
     
     int i = 0;
     int counter = 0;
@@ -636,23 +789,35 @@ void update(std::string tableName, std::string update_list, std::string conditio
     while (getline(file, line))
     {                           //id name mob
         row_values.clear();     //1 abc 9876        set name = bmm where id = 1
-        ss.clear();
+        
+        /*ss.clear();
         ss.str(line);
         while (ss.good()) {
             string substr;
             getline(ss, substr, ',');
+            substr = rtrim(ltrim(substr));
             row_values.push_back(substr);
-        }
+        }*/
+        breakString(row_values, line, ',');
         
         if(row_values[i] != condn_value){
             temp << line << endl;
         }
         else{
+            //cout << "row value = " << row_values[i] << endl;
             for(int x=0; x<og_colNames.size(); x++){
-                if(find(update_colNames.begin(), update_colNames.end(), og_colNames[x]) != update_colNames.end())
-                    temp << update_values[x] << ",";
+                int idx;
+                if( (idx = finder(update_colNames, og_colNames[x])) != -1){
+                    // if(dataTypeChecker("char", update_values[idx])){
+                    //     cout << "Name = " << update_values[idx]; 
+                    //     // update_values[idx].erase(0, 1);
+                    //     // update_values[idx].erase(update_values.size()-1, 1);
+                    // }
+                    temp << update_values[idx];
+                }
                 else
-                    temp << row_values[x] << ",";
+                    temp << row_values[x];
+                temp << (x == og_colNames.size()-1 ? "" : ",");
             }
             temp << endl;
             counter++;
@@ -666,4 +831,173 @@ void update(std::string tableName, std::string update_list, std::string conditio
     rename("temp.csv", (tableName+".csv").c_str());
     
     cout << counter << " row(s) updated successfully!" << endl;
+}
+
+void select(std::string tableName, std::string attr_list, std::string condition_list){
+    std::string line;
+    if(!tableCheck(tableName, line)){
+        cout << "Error: " << errors[5] << " \"" << tableName << "\"" << endl;
+        return;                                                                 //Add error handling
+    }
+
+    vector<string> values;
+    file.close();
+    file.open(tableName + ".csv");
+    
+    if(attr_list == "*"){
+        if(condition_list.empty()){
+            while(getline(file, line)){
+                values.clear();
+                breakString(values, line, ',');
+
+                for(auto i : values)
+                    cout << std::setw(5) << i;
+                cout << endl;
+            }
+        }
+        else{
+            string condn_colName;
+            string condn_value;
+            stringstream ss(condition_list);     //id = 1
+            
+            for(int i=0; i<2; i++){
+                string substr;
+                getline(ss, substr, '=');
+                substr = rtrim(ltrim(substr));
+                if(i == 0) condn_colName = substr;
+                else condn_value = substr;
+            }
+
+            if(condn_value.empty() || condn_colName.empty()){
+                cout << "Error: " << errors[4] << endl;
+                return;
+            }
+
+            int loc;
+            if((loc = line.find(condn_colName)) == string::npos){
+                cout << "Error: No such column name exists in table!" << endl;
+                return;
+            }
+            loc = line.find("#", loc);
+            string colType = line.substr(loc+1, line.find('#', loc+1)-loc-1);       //where id = abc
+        
+            if(!dataTypeChecker(colType, condn_value)){
+                cout << "Error: " << errors[9] << " " << colType << " for column \"" << condn_colName << "\"" << endl;
+                return;
+            }
+
+            getline(file, line);
+            breakString(values, line, ',');
+
+            int idx = 0;
+            while(values[idx] != condn_colName) idx++;
+
+            for(auto i : values)
+                cout << std::setw(5) << i;
+            cout << endl;
+
+            while(getline(file, line)){
+                values.clear();
+                breakString(values, line, ',');
+
+                if(values[idx] == condn_value){
+                    for(auto i : values)
+                        cout << std::setw(5) << i;
+                    cout << endl;
+                }
+            }
+        }
+    }                                               //attr_list - id, name
+    else if(condition_list.empty()){
+        vector<string> colNames;
+        breakString(colNames, attr_list, ',');      //attr id mob (0, 2)
+        
+        getline(file, line);
+        breakString(values, line, ',');             // og columns id name mob
+        
+        vector<int> index;
+        for(int i=0; i<values.size(); i++){
+            if(finder(colNames, values[i]) != -1){
+                index.push_back(i);
+            }
+        }
+        //sort(index.begin(), index.end());
+        for(int i=0; i<index.size(); i++)
+            cout << std::setw(5) << values[index[i]];
+        cout << endl;
+
+        while(getline(file, line)){
+            values.clear();
+            breakString(values, line, ',');
+            
+            for(int i=0; i<index.size(); i++)
+                cout << std::setw(5) << values[index[i]];
+            cout << endl;
+        }
+    }
+    else{
+        string condn_colName;
+        string condn_value;
+        stringstream ss(condition_list);     //id = 1
+        
+        for(int i=0; i<2; i++){
+            string substr;
+            getline(ss, substr, '=');
+            substr = rtrim(ltrim(substr));
+            if(i == 0) condn_colName = substr;
+            else condn_value = substr;
+        }
+
+        if(condn_value.empty() || condn_colName.empty()){
+            cout << "Error: " << errors[4] << endl;
+            return;
+        }
+
+        int loc;
+        if((loc = line.find(condn_colName)) == string::npos){
+            cout << "Error: No such column name exists in table!" << endl;
+            return;
+        }
+        loc = line.find("#", loc);
+        string colType = line.substr(loc+1, line.find('#', loc+1)-loc-1);       //where id = abc
+    
+        if(!dataTypeChecker(colType, condn_value)){
+            cout << "Error: " << errors[9] << " " << colType << " for column \"" << condn_colName << "\"" << endl;
+            return;
+        }
+        
+        vector<string> colNames;
+        breakString(colNames, attr_list, ',');      //attr id mob (0, 2)
+        
+        getline(file, line);
+        breakString(values, line, ',');             // og columns id name mob
+        
+        int idx = 0;
+        while(values[idx] != condn_colName) idx++;
+        
+        vector<int> index;
+        for(int i=0; i<values.size(); i++){
+            if(finder(colNames, values[i]) != -1){
+                index.push_back(i);
+            }
+        }
+        //sort(index.begin(), index.end());
+        for(int i=0; i<index.size(); i++)
+            cout << std::setw(5) << values[index[i]];
+        cout << endl;
+
+        while(getline(file, line)){
+            values.clear();
+            breakString(values, line, ',');
+            
+            if(values[idx] == condn_value){
+                for(int i=0; i<index.size(); i++)
+                    cout << std::setw(5) << values[index[i]];
+                cout << endl;
+            }
+        }
+
+    }
+
+    file.close();
 }
