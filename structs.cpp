@@ -808,11 +808,7 @@ void update(std::string tableName, std::string update_list, std::string conditio
             for(int x=0; x<og_colNames.size(); x++){
                 int idx;
                 if( (idx = finder(update_colNames, og_colNames[x])) != -1){
-                    // if(dataTypeChecker("char", update_values[idx])){
-                    //     cout << "Name = " << update_values[idx]; 
-                    //     // update_values[idx].erase(0, 1);
-                    //     // update_values[idx].erase(update_values.size()-1, 1);
-                    // }
+                    dataTypeChecker("char", update_values[idx]);
                     temp << update_values[idx];
                 }
                 else

@@ -19,7 +19,7 @@ public:
     int errorCheck();
     void setString(std::string);
     void start();
-    void tokenize();
+    // void tokenize();
 };
 
 class Parser{                                       //Parser to convert individual sql command to necessary data formats and call execute
@@ -54,8 +54,8 @@ std::string toLower(std::string);
 void breakString(std::vector<std::string>& values, std::string line, char delim);
 
 void removeParenthesis(std::string& s);
-std::string ltrim(const std::string &s);
-std::string rtrim(const std::string &s);
+std::string ltrim(const std::string& s);
+std::string rtrim(const std::string& s);
 
 bool checkIsDigit(std::string s);
 bool tableCheck(std::string tableName, std::string& line);

@@ -1,2 +1,1 @@
 user#id#int#name#char#mob#int
-abc#id#int#name#char
